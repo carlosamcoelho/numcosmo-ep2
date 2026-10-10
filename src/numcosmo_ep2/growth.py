@@ -9,6 +9,38 @@ radiation. Growth is evolved using N = ln(a), with D(1) = 1.
 import numpy as np
 from scipy.integrate import solve_ivp, quad
 
+def cosmExpansion(a, omega_m0, omega_lambda0):
+    """
+    Compute background expansion quantities for matter + curvature + Lambda.
+
+    Parameters
+    ----------
+    a : float or array_like
+        Scale factor.
+    omega_m0 : float
+        Present-day matter density parameter.
+    omega_lambda0 : float
+        Present-day cosmological-constant density parameter.
+
+    Returns
+    -------
+    E2 : float or ndarray
+        Squared dimensionless Hubble function, E(a)^2 = H(a)^2 / H0^2.
+    omega_m : float or ndarray
+        Matter density evolution with scale factor.
+    dlnH_dN : float or ndarray
+        Logarithmic derivative d ln H / dN, with N = ln(a).
+    """
+    omega_k0 = 1.0 - omega_m0 - omega_lambda0
+
+    E2 = omega_m0 * a**(-3) + omega_k0 * a**(-2) + omega_lambda0
+
+    omega_m = omega_m0 * a**(-3) / E2
+    omega_k = omega_k0 * a**(-2) / E2
+    dlnH_dN = -1.5 * omega_m - omega_k
+
+    return E2, omega_m, dlnH_dN
+    
 def growthODE(N, y, omega_m0, omega_lambda0):
     """
     Right-hand side of the linear growth equation in N = ln(a).
@@ -41,15 +73,8 @@ def growthODE(N, y, omega_m0, omega_lambda0):
     G, GN = y
 
     a = np.exp(N)
-
-    omega_k0 = 1.0 - omega_m0 - omega_lambda0
-
-    E2 = omega_m0 * a**(-3) + omega_k0 * a**(-2) + omega_lambda0
-
-    omega_m = omega_m0 * a**(-3) / E2
-    omega_k = omega_k0 * a**(-2) / E2
-    dlnH_dN = -1.5 * omega_m - omega_k
-
+    E2, omega_m, dlnH_dN = cosmExpansion(a, omega_m0, omega_lambda0)
+    
     GNN = -(2.0 + dlnH_dN) * GN + 1.5 * omega_m * G
     return [GN, GNN]
 
