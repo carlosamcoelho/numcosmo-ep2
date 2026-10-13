@@ -346,6 +346,9 @@ def cicDeposit(positions, L, Ng, masses=None, return_mass_grid=False):
     -------
     delta : ndarray
         Mesh density contrast, rho/<rho> - 1.
+    rho : ndarray, optional
+        CIC-deposited particle mass per mesh cell. Returned only when
+        `return_mass_grid=True`.
     """
     dx = L / Ng
 
@@ -381,7 +384,7 @@ def cicDeposit(positions, L, Ng, masses=None, return_mass_grid=False):
     delta = rho / rho.mean() - 1.0
 
     if return_mass_grid:
-        return delta, mass_grid
+        return delta, rho
     return delta
 
 def cicWindow(kx, ky, kz, dx):
@@ -405,6 +408,55 @@ def cicWindow(kx, ky, kz, dx):
 # Ensamble analysis -----------------------------------------------------
 
 def oneZaSpectrum(N, L, seed, D_i, classPower, bins):
+    """
+    Generate one paired Gaussian/ZA power-spectrum realization.
+
+    A Gaussian reference field is drawn at the spectrum reference epoch,
+    evolved linearly to the initial epoch through `D_i`, and used to
+    construct first-order Zel'dovich displacements. A uniform particle
+    lattice is displaced, deposited back onto an N^3 mesh with CIC, and
+    the CIC Fourier window is deconvolved before measuring the particle
+    power spectrum.
+
+    The Gaussian and ZA spectra therefore share the same random phases
+    and are evaluated at the same epoch.
+
+    Parameters
+    ----------
+    N : int
+        Mesh size and number of particles per dimension.
+    L : float
+        Periodic box side length.
+    seed : int
+        Random seed for the Gaussian realization.
+    D_i : float
+        Linear growth factor at the ZA initial epoch, normalized to
+        D(a_ref) = 1.
+    classPower : callable
+        Reference linear power spectrum P(k, a_ref).
+    bins : array_like
+        Wavenumber bin edges used for shell averaging.
+
+    Returns
+    -------
+    kbin : ndarray
+        Mean wavenumber of each non-empty shell.
+    Pg : ndarray
+        Shell-averaged Gaussian linear power spectrum at the initial
+        epoch.
+    Pza : ndarray
+        Shell-averaged ZA particle power spectrum after CIC
+        deconvolution.
+    Pinput : ndarray
+        Shell-averaged theoretical input spectrum D_i^2 P(k, a_ref).
+    Nmodes : ndarray
+        Effective number of full-spectrum Fourier modes per shell.
+
+    Notes
+    -----
+    No Poisson shot-noise subtraction is applied because the particle
+    load is a displaced lattice rather than a Poisson sample.
+    """
     dx = L / N
     V = L**3
 
@@ -480,6 +532,51 @@ def oneZaSpectrum(N, L, seed, D_i, classPower, bins):
     return kbin, Pg, Pza, Pinput, Nmodes
 
 def runZaEnsemble(N, L, seeds, D_i, classPower):
+    """
+    Run an ensemble of paired Gaussian and ZA spectrum realizations.
+
+    For each random seed, `oneZaSpectrum` is evaluated using identical
+    box, resolution, growth factor, spectrum, and shell definition.
+    Power spectra are measured only up to 0.5 k_Ny, where
+
+        k_Ny = pi N / L.
+
+    Parameters
+    ----------
+    N : int
+        Mesh and particle resolution per dimension.
+    L : float
+        Periodic box side length.
+    seeds : iterable of int
+        Random seeds defining independent Gaussian realizations.
+    D_i : float
+        Linear growth factor at the ZA initial epoch.
+    classPower : callable
+        Reference linear power spectrum P(k, a_ref).
+
+    Returns
+    -------
+    result : dict
+        Dictionary containing:
+
+        `N`
+            Mesh resolution.
+        `k`
+            Shell-averaged wavenumbers.
+        `Pinput`
+            Shell-averaged theoretical spectrum at the initial epoch.
+        `Nmodes`
+            Effective number of Fourier modes per shell.
+        `Pg`
+            Gaussian spectra with shape (Nseed, Nbin).
+        `Pza`
+            ZA particle spectra with shape (Nseed, Nbin).
+
+    Notes
+    -----
+    The upper analysis limit of 0.5 k_Ny is an operational choice and
+    should not be interpreted as a universal accuracy threshold.
+    """
     kf = 2.0 * np.pi / L
     kNy = np.pi * N / L
     kmax = 0.5 * kNy
@@ -515,6 +612,45 @@ def runZaEnsemble(N, L, seeds, D_i, classPower):
     }
 
 def ensembleStatistics(result):
+    """
+    Compute ensemble statistics for paired Gaussian and ZA spectra.
+
+    The routine returns ensemble means and standard errors of the mean
+    for both spectra. It also forms the realization-by-realization ratio
+
+        P_ZA(k) / P_G(k),
+
+    before averaging, so that fluctuations shared by the paired
+    Gaussian and ZA fields are partially cancelled.
+
+    Parameters
+    ----------
+    result : dict
+        Output dictionary returned by `runZaEnsemble`.
+
+    Returns
+    -------
+    stats : dict
+        Dictionary containing:
+
+        `Pg_mean`
+            Ensemble-mean Gaussian power spectrum.
+        `Pg_sem`
+            Standard error of the Gaussian ensemble mean.
+        `Pza_mean`
+            Ensemble-mean ZA particle power spectrum.
+        `Pza_sem`
+            Standard error of the ZA ensemble mean.
+        `paired_mean`
+            Ensemble mean of the paired ratio P_ZA / P_G.
+        `paired_sem`
+            Standard error of the paired ratio.
+
+    Notes
+    -----
+    The paired ratio is computed before ensemble averaging and is
+    therefore distinct from Pza_mean / Pg_mean.
+    """
     Pg = result["Pg"]
     Pza = result["Pza"]
 

@@ -6,16 +6,66 @@ from numcosmo_ep2.growth import cosmExpansion, linearGrowth
 
 # Helper functions -----------------------------------------------
 def findTurnaroundEvent(sol):
+    """
+    Extract the first turnaround event from an ODE solution.
+
+    Parameters
+    ----------
+    sol : scipy.integrate.OdeResult
+        Solution returned by `solve_ivp` with turnaround as event 0.
+
+    Returns
+    -------
+    tuple or None
+        `(a_ta, y_ta)`, where `a_ta` is the turnaround scale factor
+        and `y_ta` is the state vector at the event. Returns `None`
+        if no turnaround was detected.
+    """
     if len(sol.t_events[0]) == 0:
         return None # No turnaround
     return np.exp(sol.t_events[0][0]), sol.y_events[0][0]
 
 def findCollapseEvent(sol):
+    """
+    Extract the first collapse event from an ODE solution.
+
+    Parameters
+    ----------
+    sol : scipy.integrate.OdeResult
+        Solution returned by `solve_ivp` with collapse as event 1.
+
+    Returns
+    -------
+    tuple or None
+        `(a_coll, y_coll)`, where `a_coll` is the collapse scale
+        factor and `y_coll` is the state vector at the event.
+        Returns `None` if no collapse was detected.
+    """
     if len(sol.t_events[1]) == 0:
         return None # No collapse
     return np.exp(sol.t_events[1][0]), sol.y_events[1][0]
 
 def defineEvents(form, collapseThreshold):
+    """
+    Construct turnaround and collapse event functions.
+
+    Turnaround is defined by theta = -3. For formulations A and B,
+    collapse occurs when delta reaches `collapseThreshold`; for
+    formulation C it occurs when g = 1/delta decreases to the supplied
+    threshold.
+
+    Parameters
+    ----------
+    form : {'A', 'B', 'C'}
+        Spherical-collapse formulation.
+    collapseThreshold : float
+        Positive numerical threshold used to terminate collapse.
+
+    Returns
+    -------
+    list
+        `[turnaroundEvent, collapseEvent]` for use with `solve_ivp`.
+    """
     form = form.upper()
     if form not in ("A", "B", "C"):
         raise ValueError("form must be 'A', 'B', or 'C'.")
@@ -46,6 +96,17 @@ def defineEvents(form, collapseThreshold):
 
 # Linear collapse ------------------------------------------------
 def collapseLinearODE(N, y, omega_m0, omega_lambda0):
+    """
+    Linear spherical-collapse growth equation in N = ln(a).
+
+    The state is y = (delta_L, d delta_L/dN). The background expansion
+    is obtained from `cosmExpansion`.
+
+    Returns
+    -------
+    list
+        `[d delta_L/dN, d² delta_L/dN²]`.
+    """
     deltaL, deltaLN = y
 
     a = np.exp(N)
@@ -63,7 +124,28 @@ def collapseLinearODE(N, y, omega_m0, omega_lambda0):
 def solveCollapseLinear(ai, af, delta_i,
                         omega_m0, omega_lambda0,
                         rtol=1e-8, atol=1e-12):
+    """
+    Integrate the linear overdensity associated with a collapse solution.
 
+    Growing-mode initial conditions are imposed using the logarithmic
+    growth rate f(ai), so that delta_L,N(ai) = f(ai) delta_i.
+
+    Parameters
+    ----------
+    ai, af : float
+        Initial and final scale factors.
+    delta_i : float
+        Initial linear overdensity.
+    omega_m0, omega_lambda0 : float
+        Present-day matter and cosmological-constant density parameters.
+    rtol, atol : float
+        Relative and absolute ODE tolerances.
+
+    Returns
+    -------
+    scipy.integrate.OdeResult
+        Dense-output solution in N = ln(a).
+    """
     _, _, f_i = linearGrowth(
         np.array([ai]),
         omega_m0,
@@ -92,6 +174,17 @@ def solveCollapseLinear(ai, af, delta_i,
     
 # A collapse formulation -----------------------------------------
 def collapseAODE(N, y, omega_m0, omega_lambda0):
+    """
+    Nonlinear spherical-collapse system in formulation A.
+
+    The state is y = (delta, delta_N), where delta_N = d delta/dN.
+    The second-order density equation is evolved directly.
+
+    Returns
+    -------
+    list
+        `[delta_N, delta_NN]`.
+    """
     delta, deltaN = y
     a = np.exp(N)
     
@@ -108,7 +201,31 @@ def solveCollapseA(ai, af, delta_i,
                    omega_m0, omega_lambda0,
                    deltaInf=1e8,
                    rtol=1e-8, atol=1e-12):
+    """
+    Integrate spherical collapse using formulation A.
 
+    Growing-mode initial conditions use
+    delta_N(ai) = f(ai) delta_i. Integration stops when the nonlinear
+    overdensity reaches `deltaInf`; turnaround is recorded separately.
+
+    Parameters
+    ----------
+    ai, af : float
+        Initial and final scale factors.
+    delta_i : float
+        Initial nonlinear overdensity.
+    omega_m0, omega_lambda0 : float
+        Background cosmological parameters.
+    deltaInf : float
+        Finite overdensity used as the numerical collapse threshold.
+    rtol, atol : float
+        ODE tolerances.
+
+    Returns
+    -------
+    scipy.integrate.OdeResult
+        Nonlinear collapse trajectory with event information.
+    """
     if not (0.0 < ai < af <= 1.0):
         raise ValueError("Require 0 < ai < af <= 1.")
     if delta_i <= 0.0:
@@ -147,7 +264,20 @@ def shootCollapseA(ai, ac, omega_m0, omega_lambda0,
                    deltaInf=1e8,
                    rtol=1e-8, atol=1e-12,
                    xtol=1e-12):
+    """
+    Tune the initial overdensity so formulation A collapses at `ac`.
 
+    A Brent root search is performed over `deltaBracket`. Subcritical
+    trials are ranked by their final overdensity relative to `deltaInf`,
+    while supercritical trials are ranked by their collapse epoch.
+
+    Returns
+    -------
+    delta_i : float
+        Tuned initial overdensity.
+    sol : scipy.integrate.OdeResult
+        Final nonlinear trajectory obtained with the tuned value.
+    """
     deltaLow, deltaHigh = deltaBracket
 
     if deltaLow <= 0.0 or deltaHigh <= deltaLow:
@@ -198,6 +328,18 @@ def shootCollapseA(ai, ac, omega_m0, omega_lambda0,
 
 # B collapse formulation -----------------------------------------
 def collapseBODE(N, y, omega_m0, omega_lambda0):
+    """
+    Nonlinear spherical-collapse system in formulation B.
+
+    The state is y = (delta, theta), where theta is the dimensionless
+    velocity divergence. The continuity and velocity-divergence
+    equations are evolved as a coupled first-order system.
+
+    Returns
+    -------
+    list
+        `[delta_N, theta_N]`.
+    """
     delta, theta = y
     a = np.exp(N)
 
@@ -216,7 +358,20 @@ def solveCollapseB(ai, af, delta_i,
                    omega_m0, omega_lambda0,
                    deltaInf=1e8,
                    rtol=1e-8, atol=1e-12):
+    """
+    Integrate spherical collapse using formulation B.
 
+    Growing-mode initial conditions use
+
+        theta_i = -f(ai) delta_i / (1 + delta_i).
+
+    Collapse is terminated when delta reaches `deltaInf`.
+
+    Returns
+    -------
+    scipy.integrate.OdeResult
+        Nonlinear solution with turnaround and collapse events.
+    """
     if not (0.0 < ai < af <= 1.0):
         raise ValueError("Require 0 < ai < af <= 1.")
     if delta_i <= 0.0:
@@ -256,7 +411,19 @@ def shootCollapseB(ai, ac, omega_m0, omega_lambda0,
                    deltaInf=1e8,
                    rtol=1e-8, atol=1e-12,
                    xtol=1e-12):
+    """
+    Tune the initial overdensity so formulation B collapses at `ac`.
 
+    Uses Brent's method over `deltaBracket` and returns the tuned
+    overdensity together with the corresponding nonlinear trajectory.
+
+    Returns
+    -------
+    delta_i : float
+        Tuned initial overdensity.
+    sol : scipy.integrate.OdeResult
+        Final formulation-B collapse solution.
+    """
     deltaLow, deltaHigh = deltaBracket
 
     if deltaLow <= 0.0 or deltaHigh <= deltaLow:
@@ -311,6 +478,17 @@ def shootCollapseB(ai, ac, omega_m0, omega_lambda0,
 
 # C collapse formulation -----------------------------------------
 def collapseCODE(N, y, omega_m0, omega_lambda0):
+    """
+    Nonlinear spherical-collapse system in formulation C.
+
+    The state is y = (g, theta), with g = 1/delta. Collapse therefore
+    corresponds to g -> 0 rather than delta -> infinity.
+
+    Returns
+    -------
+    list
+        `[g_N, theta_N]`.
+    """
     g, theta = y
     a = np.exp(N)
 
@@ -329,7 +507,23 @@ def solveCollapseC(ai, af, delta_i,
                    omega_m0, omega_lambda0,
                    epsilon=1e-8,
                    rtol=1e-8, atol=1e-12):
+    """
+    Integrate spherical collapse using the inverse-overdensity variable.
 
+    The initial state is g_i = 1/delta_i and
+    theta_i = -f(ai) delta_i/(1 + delta_i). Numerical collapse is
+    defined by g reaching the positive threshold `epsilon`.
+
+    Parameters
+    ----------
+    epsilon : float
+        Finite threshold approximating the singular limit g -> 0.
+
+    Returns
+    -------
+    scipy.integrate.OdeResult
+        Formulation-C collapse trajectory with event information.
+    """
     if not (0.0 < ai < af <= 1.0):
         raise ValueError("Require 0 < ai < af <= 1.")
     if delta_i <= 0.0:
@@ -372,7 +566,20 @@ def shootCollapseC(ai, ac, omega_m0, omega_lambda0,
                    epsilon=1e-8,
                    rtol=1e-8, atol=1e-12,
                    xtol=1e-12):
+    """
+    Tune the initial overdensity so formulation C collapses at `ac`.
 
+    Brent's method is applied to the initial overdensity. For
+    subcritical trajectories the objective uses g(ac)/epsilon; for
+    trajectories collapsing early it uses the collapse epoch.
+
+    Returns
+    -------
+    delta_i : float
+        Tuned initial overdensity.
+    sol : scipy.integrate.OdeResult
+        Final formulation-C trajectory.
+    """
     deltaLow, deltaHigh = deltaBracket
 
     if deltaLow <= 0.0 or deltaHigh <= deltaLow:
@@ -429,7 +636,25 @@ def shootCollapseC(ai, ac, omega_m0, omega_lambda0,
 
 def virialRadiusRatio(lambda_ta):
     """
-    Compute y = Rvir/Rta for the spherical-collapse virial prescription.
+    Compute the virial-to-turnaround radius ratio.
+
+    Solves the cubic virial relation
+
+        4 lambda_ta y^3 - 2(1 + lambda_ta)y + 1 = 0,
+
+    for the physical root y = Rvir/Rta in [0, 1/2]. The EdS limit
+    lambda_ta = 0 gives y = 1/2.
+
+    Parameters
+    ----------
+    lambda_ta : float
+        Ratio of cosmological-constant to matter density inside the
+        perturbation at turnaround.
+
+    Returns
+    -------
+    float
+        Virial radius ratio Rvir/Rta.
     """
 
     if lambda_ta < 0.0:
@@ -451,7 +676,32 @@ def virialDiagnostic(sol, ac,
                      omega_m0, omega_lambda0,
                      form,
                      verbose=True):
+    """
+    Compute turnaround and virial quantities from a collapse trajectory.
 
+    The turnaround state is reconstructed according to the chosen
+    formulation. The routine then evaluates the virial-radius ratio and
+    overdensities relative to the mean matter and critical densities.
+
+    Parameters
+    ----------
+    sol : scipy.integrate.OdeResult
+        Nonlinear collapse trajectory containing a turnaround event.
+    ac : float
+        Target collapse scale factor.
+    omega_m0, omega_lambda0 : float
+        Background cosmological parameters.
+    form : {'A', 'B', 'C'}
+        Collapse formulation used to generate `sol`.
+    verbose : bool
+        Print derived quantities if True.
+
+    Returns
+    -------
+    dict
+        Turnaround scale factor, velocity divergence, turnaround
+        overdensity, lambda_ta, Rvir/Rta, Delta_vir,m and Delta_vir,c.
+    """
     form = form.upper()
 
     if form not in ("A", "B", "C"):
@@ -529,7 +779,40 @@ def collapseDiagnostic(ac, omega_m0, omega_lambda0,
                        deltaInf=1e8,
                        rtol=1e-8, atol=1e-12,
                        verbose=True):
+    """
+    Run the complete spherical-collapse diagnostic for one cosmology.
 
+    The initial overdensity is tuned so nonlinear collapse occurs at
+    `ac`. The corresponding linear solution gives the collapse threshold
+    delta_c, while the nonlinear trajectory supplies turnaround and
+    virial quantities.
+
+    Parameters
+    ----------
+    ac : float
+        Target collapse scale factor.
+    omega_m0, omega_lambda0 : float
+        Present-day cosmological density parameters.
+    ai : float
+        Initial scale factor.
+    form : {'A', 'B', 'C'}
+        Nonlinear formulation.
+    bracket : tuple
+        Brent-search bracket for the initial overdensity.
+    deltaInf : float
+        Finite overdensity defining numerical collapse in A/B; its
+        inverse is used as the g threshold in C.
+    rtol, atol : float
+        Numerical integration tolerances.
+    verbose : bool
+        Print the diagnostic dictionary if True.
+
+    Returns
+    -------
+    dict
+        Tuned initial overdensity, collapse epoch and residual, linear
+        threshold delta_c, and turnaround/virial quantities.
+    """
     form = form.upper()
 
     if form not in ("A", "B", "C"):
@@ -607,7 +890,24 @@ def EdS_collapse_diagnostic(ac, verbose=True,
                             bracket=(5e-6, 1e-4),
                             deltaInf=1e8,
                             rtol=1e-8, atol=1e-12,):
+    """
+    Validate a numerical collapse solution against exact EdS results.
 
+    Runs `collapseDiagnostic` for Omega_m0=1 and Omega_Lambda0=0 and
+    compares the numerical solution with the analytic EdS benchmarks
+
+        delta_c = (3/20)(12 pi)^(2/3),
+        a_ta = ac 2^(-2/3),
+        zeta_ta = (3 pi/4)^2,
+        Delta_vir,m = 18 pi^2,
+        theta_ta = -3.
+
+    Returns
+    -------
+    dict
+        Relative errors in collapse epoch, delta_c, theta_ta,
+        turnaround epoch, turnaround overdensity and virial overdensity.
+    """
     diag = collapseDiagnostic(
         ac=ac,
         omega_m0=1.0,
