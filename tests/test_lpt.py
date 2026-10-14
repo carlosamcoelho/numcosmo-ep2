@@ -41,28 +41,16 @@ def test_physical_fft_roundtrip():
     L = 100.0
     dx = L / N
 
-    delta_k, delta_x = gaussianField(
-        N, L, toyPower, seed=1234
-    )
+    delta_k, delta_x = gaussianField(N, L, toyPower, seed=1234)
+    delta_k_recovered = dx**3 * np.fft.rfftn(delta_x)
 
-    delta_k_recovered = (
-        dx**3 * np.fft.rfftn(delta_x)
-    )
-
-    assert np.allclose(
-        delta_k_recovered,
-        delta_k,
-        rtol=1e-12,
-        atol=1e-12
-    )
+    assert np.allclose(delta_k_recovered, delta_k, rtol=1e-12, atol=1e-12)
 
 def test_gaussian_zero_mode_and_mean():
     N = 16
     L = 100.0
 
-    delta_k, delta_x = gaussianField(
-        N, L, toyPower, seed=1234
-    )
+    delta_k, delta_x = gaussianField(N, L, toyPower, seed=1234)
 
     assert delta_k[0, 0, 0] == 0.0
     assert abs(delta_x.mean()) < 1e-12
@@ -76,7 +64,6 @@ def test_gaussian_seed_reproducibility():
 
     assert np.array_equal(dk1, dk2)
     assert np.array_equal(dx1, dx2)
-
     assert not np.array_equal(dk1, dk3)
 
 def test_rfft_mode_weights():
@@ -99,24 +86,14 @@ def test_shell_average_constant_power():
 
     P0 = 7.5
 
-    delta_k = np.sqrt(V * P0) * np.ones(
-        kmag.shape,
-        dtype=complex
-    )
+    delta_k = np.sqrt(V * P0) * np.ones(kmag.shape, dtype=complex)
     delta_k[0, 0, 0] = 0.0
 
     kf = 2.0 * np.pi / L
     kNy = np.pi * N / L
 
-    bins = np.arange(
-        0.5 * kf,
-        kNy + 1.5 * kf,
-        kf
-    )
-
-    _, Pbin, Nmodes = shellAveragePower(
-        delta_k, kmag, L, N, bins
-    )
+    bins = np.arange(0.5 * kf, kNy + 1.5 * kf, kf)
+    _, Pbin, Nmodes = shellAveragePower(delta_k, kmag, L, N, bins)
 
     assert np.all(Nmodes > 0)
     assert np.allclose(Pbin, P0)
@@ -140,28 +117,15 @@ def test_za_divergence():
     L = 100.0
     D1 = 0.25
 
-    delta_k, _ = gaussianField(
-        N, L, toyPower, seed=123
-    )
+    delta_k, _ = gaussianField(N, L, toyPower, seed=123)
 
     _, _, kx, ky, kz, k2, _ = fourierGrid(N, L)
 
-    psi_k, delta_used = zaDisplacementFourier(
-        delta_k, kx, ky, kz, k2, D1
-    )
+    psi_k, delta_used = zaDisplacementFourier(delta_k, kx, ky, kz, k2, D1)
 
-    minus_div_k = -1j * (
-        kx * psi_k[0]
-        + ky * psi_k[1]
-        + kz * psi_k[2]
-    )
-
+    minus_div_k = -1j * (kx * psi_k[0] + ky * psi_k[1] + kz * psi_k[2])
     target = D1 * delta_used
-
-    residual = (
-        np.linalg.norm(minus_div_k - target)
-        / np.linalg.norm(target)
-    )
+    residual = np.linalg.norm(minus_div_k - target) / np.linalg.norm(target)
 
     assert residual < 1e-12
 
@@ -170,32 +134,16 @@ def test_za_curl():
     L = 100.0
     D1 = 0.25
 
-    delta_k, _ = gaussianField(
-        N, L, toyPower, seed=123
-    )
-
+    delta_k, _ = gaussianField(N, L, toyPower, seed=123)
     _, _, kx, ky, kz, k2, _ = fourierGrid(N, L)
 
-    psi_k, delta_used = zaDisplacementFourier(
-        delta_k, kx, ky, kz, k2, D1
-    )
+    psi_k, delta_used = zaDisplacementFourier(delta_k, kx, ky, kz, k2, D1)
 
-    curl_x = 1j * (
-        ky * psi_k[2] - kz * psi_k[1]
-    )
-    curl_y = 1j * (
-        kz * psi_k[0] - kx * psi_k[2]
-    )
-    curl_z = 1j * (
-        kx * psi_k[1] - ky * psi_k[0]
-    )
+    curl_x = 1j * (ky * psi_k[2] - kz * psi_k[1])
+    curl_y = 1j * (kz * psi_k[0] - kx * psi_k[2])
+    curl_z = 1j * (kx * psi_k[1] - ky * psi_k[0])
 
-    curl_norm = np.sqrt(
-        np.linalg.norm(curl_x)**2
-        + np.linalg.norm(curl_y)**2
-        + np.linalg.norm(curl_z)**2
-    )
-
+    curl_norm = np.sqrt(np.linalg.norm(curl_x)**2 + np.linalg.norm(curl_y)**2 + np.linalg.norm(curl_z)**2)
     reference = np.linalg.norm(D1 * delta_used)
 
     assert curl_norm / reference < 1e-12
@@ -205,20 +153,11 @@ def test_za_mean_displacement():
     L = 100.0
     D1 = 0.25
 
-    delta_k, _ = gaussianField(
-        N, L, toyPower, seed=123
-    )
-
+    delta_k, _ = gaussianField(N, L, toyPower, seed=123)
     _, _, kx, ky, kz, k2, _ = fourierGrid(N, L)
 
-    psi_k, _ = zaDisplacementFourier(
-        delta_k, kx, ky, kz, k2, D1
-    )
-
-    psi_x = displacementToReal(
-        psi_k, N, L
-    )
-
+    psi_k, _ = zaDisplacementFourier(delta_k, kx, ky, kz, k2, D1)
+    psi_x = displacementToReal(psi_k, N, L)
     mean = psi_x.mean(axis=(1, 2, 3))
 
     assert np.all(np.abs(mean) < 1e-12)
@@ -238,41 +177,20 @@ def test_za_single_cosine_mode():
     k = 2.0 * np.pi * nmode / L
 
     delta_1d = eps * np.cos(k * x)
-
-    delta_x = np.broadcast_to(
-        delta_1d[:, None, None],
-        (N, N, N)
-    ).copy()
+    delta_x = np.broadcast_to(delta_1d[:, None, None], (N, N, N)).copy()
 
     # physical Fourier coefficients
     delta_k = dx**3 * np.fft.rfftn(delta_x)
 
     _, _, kx, ky, kz, k2, _ = fourierGrid(N, L)
 
-    psi_k, _ = zaDisplacementFourier(
-        delta_k, kx, ky, kz, k2, D1
-    )
+    psi_k, _ = zaDisplacementFourier(delta_k, kx, ky, kz, k2, D1)
+    psi_x = displacementToReal(psi_k, N, L)
 
-    psi_x = displacementToReal(
-        psi_k, N, L
-    )
+    expected_x = (-D1 * eps / k * np.sin(k * x))
+    expected_x = np.broadcast_to(expected_x[:, None, None], (N, N, N))
 
-    expected_x = (
-        -D1 * eps / k * np.sin(k * x)
-    )
-
-    expected_x = np.broadcast_to(
-        expected_x[:, None, None],
-        (N, N, N)
-    )
-
-    assert np.allclose(
-        psi_x[0],
-        expected_x,
-        rtol=1e-11,
-        atol=1e-12
-    )
-
+    assert np.allclose(psi_x[0], expected_x, rtol=1e-11, atol=1e-12)
     assert np.max(np.abs(psi_x[1])) < 1e-12
     assert np.max(np.abs(psi_x[2])) < 1e-12
 
@@ -291,30 +209,16 @@ def test_cic_uniform_lattice():
     L = 100.0
 
     q = uniformLattice(N, L)
-
-    delta = cicDeposit(
-        q.reshape(-1, 3),
-        L,
-        N
-    )
+    delta = cicDeposit(q.reshape(-1, 3), L, N)
 
     assert np.allclose(delta, 0.0, atol=1e-14)
 
 def test_za_particle_wrapping():
-    q = np.array([
-        [[[[0.1, 0.2, 9.9]]]]
-    ]).reshape(1, 1, 1, 3)
+    q = np.array([[[[[0.1, 0.2, 9.9]]]]]).reshape(1, 1, 1, 3)
 
-    psi = np.array([
-        [[[-0.2, 0.0, 0.3]]]
-    ]).reshape(1, 1, 1, 3)
+    psi = np.array([[[[-0.2, 0.0, 0.3]]]]).reshape(1, 1, 1, 3)
 
-    x, _ = zaParticles(
-        q, psi,
-        L=10.0,
-        Hconf_i=1.0,
-        f_i=1.0
-    )
+    x, _ = zaParticles(q, psi, L=10.0, Hconf_i=1.0, f_i=1.0)
 
     assert np.all(x >= 0.0)
     assert np.all(x < 10.0)
@@ -328,17 +232,9 @@ def test_za_velocity_normalization():
     Hconf = 0.7
     f = 0.9
 
-    _, v = zaParticles(
-        q, psi,
-        L=100.0,
-        Hconf_i=Hconf,
-        f_i=f
-    )
+    _, v = zaParticles(q, psi, L=100.0, Hconf_i=Hconf, f_i=f)
 
-    assert np.allclose(
-        v,
-        Hconf * f * psi
-    )
+    assert np.allclose(v, Hconf * f * psi)
 
 def test_cic_window_zero_mode():
     N = 16
