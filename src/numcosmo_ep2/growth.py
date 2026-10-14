@@ -239,3 +239,13 @@ def linearGrowthQuad(aEval, omega_m0, omega_lambda0,
     G_eval = np.array([G(a) for a in np.ravel(aEval)]).reshape(aEval.shape)
 
     return G1, G_eval / G1
+
+
+def D_of_a(a, omega_m0, omega_lambda0, ai=1e-5):
+    _, D, _ = linearGrowth(
+        np.array([a]),
+        omega_m0,
+        omega_lambda0,
+        ai=ai
+    )
+    return D[0]
