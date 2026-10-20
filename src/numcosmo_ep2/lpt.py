@@ -20,6 +20,9 @@ def toyPower(k, sk=0.2, A=1):
     array_like
         P(k) = A exp[-(k/sk)^2].
     """
+
+    # Simplified gaussian power spectra for
+    # testing purposes.
     return A*np.exp(-(k / sk)**2)
 
 def fourierGrid(N, L):
@@ -45,10 +48,12 @@ def fourierGrid(N, L):
     # compressed for hermitian symmetry in rfft
     kz1d = 2.0 * np.pi * np.fft.rfftfreq(N, d=dx)
 
+    # Establishing the 3D tensorial shape
     kx = kxy[:, None, None]
     ky = kxy[None, :, None]
     kz = kz1d[None, None, :]
 
+    # k norm
     k2 = kx**2 + ky**2 + kz**2
     kmag = np.sqrt(k2)
 
@@ -93,13 +98,13 @@ def gaussianField(N, L, powerSpectrum, seed=None):
     # NumPy FFT normalization
     eta_fft = np.fft.rfftn(eta_x)
 
+    # Weighting the white noise by the power spectrum
     Pk = powerSpectrum(kmag)
-
     delta_fft = eta_fft * np.sqrt(Pk / dx**3)
 
-    # Zero mean
-    delta_fft[0, 0, 0] = 0.0
+    delta_fft[0, 0, 0] = 0.0 # Zero mean
 
+    # Return to real space
     delta_x = np.fft.irfftn(
         delta_fft,
         s=(N, N, N),
@@ -151,6 +156,7 @@ def shellAveragePower(delta_k, kmag, L, N, bins):
     p = Pmode[mask]
     w = weights[mask]
 
+    # Histogram weighting of desired values
     Nmodes, _ = np.histogram(k, bins=bins, weights=w)
     Psum,   _ = np.histogram(k, bins=bins, weights=w * p)
     ksum,   _ = np.histogram(k, bins=bins, weights=w * k)
@@ -256,6 +262,7 @@ def zaDisplacementFourier(delta_k, kx, ky, kz, k2, D1):
     mask = k2 > 0.0
     inv_k2[mask] = 1.0 / k2[mask]
 
+    # Definition of the vectorial Zel'dovich displacement in k
     psi_k = np.array([
         1j * D1 * kx * inv_k2 * delta_za,
         1j * D1 * ky * inv_k2 * delta_za,
@@ -374,6 +381,7 @@ def cicDeposit(positions, L, Ng, masses=None, return_mass_grid=False):
             for sz in (0, 1):
                 wz = (1.0 - frac[:, 2]) if sz == 0 else frac[:, 2]
 
+                # Final position at periodic conditions
                 ix = (i0[:, 0] + sx) % Ng
                 iy = (i0[:, 1] + sy) % Ng
                 iz = (i0[:, 2] + sz) % Ng
@@ -586,6 +594,7 @@ def runZaEnsemble(N, L, seeds, D_i, classPower):
     Pg_all = []
     Pza_all = []
 
+    # Same Za spectrum calculation over multiple realizations
     for seed in seeds:
         kbin, Pg, Pza, Pinput, Nmodes = oneZaSpectrum(
             N,

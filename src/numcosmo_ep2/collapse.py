@@ -113,8 +113,8 @@ def collapseLinearODE(N, y, omega_m0, omega_lambda0):
     a = np.exp(N)
     E2, omega_m, dlnH_dN = cosmExpansion(a, omega_m0, omega_lambda0)
 
+    # System of first-order ODEs from the original second-order ODE
     deltaLNN = -(2.0 + dlnH_dN) * deltaLN + 1.5 * omega_m * deltaL
-
     return [deltaLN, deltaLNN]
 
 def solveCollapseLinear(ai, af, delta_i,
@@ -153,6 +153,8 @@ def solveCollapseLinear(ai, af, delta_i,
 
     y0 = [delta_i, f_i[0] * delta_i]
 
+    # Solves the system of two first-order ODEs of the linear evolution 
+    # of overdensity.
     sol = solve_ivp(
         collapseLinearODE,
         (np.log(ai), np.log(af)),
@@ -186,6 +188,8 @@ def collapseAODE(N, y, omega_m0, omega_lambda0):
     
     E2, omega_m, dlnH_dN = cosmExpansion(a, omega_m0, omega_lambda0)
 
+    # Also formulates the self-consistent collapse equation (second-order
+    # ODE) as a system of two first-order ODEs to be solved.
     deltaNN = (
         -(2.0 + dlnH_dN) * deltaN
         + (4.0 / 3.0) * deltaN**2 / (1.0 + delta)
@@ -239,6 +243,9 @@ def solveCollapseA(ai, af, delta_i,
 
     y0 = [delta_i, f_i[0] * delta_i]
 
+    # Solves the system of first-order ODEs
+    # while also searching for moments where
+    # the callable `events` result in zero.
     events = defineEvents("A", deltaInf)
     sol = solve_ivp(
         collapseAODE,
@@ -346,12 +353,13 @@ def collapseBODE(N, y, omega_m0, omega_lambda0):
     E2, omega_m, dlnH_dN = cosmExpansion(a, omega_m0, omega_lambda0)
     deltaN = -(1.0 + delta) * theta
 
+    # System of ODEs from the B formulation, where we substitute
+    # the variable d(delta)/dN by a related quantity theta. 
     thetaN = (
         - (2.0 + dlnH_dN) * theta
         - theta**2 / 3.0
         - 1.5 * omega_m * delta
     )
-
     return [deltaN, thetaN]
 
 def solveCollapseB(ai, af, delta_i,
@@ -496,12 +504,14 @@ def collapseCODE(N, y, omega_m0, omega_lambda0):
     E2, omega_m, dlnH_dN = cosmExpansion(a, omega_m0, omega_lambda0)
     gN = g * (1.0 + g) * theta
 
+    # System of two first-order ODEs from the C formulation, that
+    # substitutes delta by g=1/delta as to treat better the 
+    # final divergence of delta.
     thetaN = (
         - (2.0 + dlnH_dN) * theta
         - theta**2 / 3.0
         - 1.5 * omega_m / g
     )
-
     return [gN, thetaN]
 
 def solveCollapseC(ai, af, delta_i,
@@ -856,7 +866,7 @@ def collapseDiagnostic(ac, omega_m0, omega_lambda0,
         **virial
     }
 
-    if verbose:
+    if verbose: # Also prints the diagnostics
         for key, value in result.items():
             print(f"{key} = {value}")
     return result
@@ -897,6 +907,7 @@ def EdS_collapse_diagnostic(ac, verbose=True,
         verbose=False
     )
 
+    # Expected analytical results for a EdS universe
     delta_c_exact = 3.0/20.0 * (12.0*np.pi)**(2.0/3.0)
     a_ta_exact = ac * 2.0**(-2.0/3.0)
     zeta_ta_exact = (3.0*np.pi/4.0)**2

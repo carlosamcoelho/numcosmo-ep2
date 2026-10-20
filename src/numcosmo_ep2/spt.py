@@ -116,12 +116,9 @@ def secondOrderDensity(delta1_k, N, L, dealias=True, dealiasing_frac=2.0/3.0):
 
     kNy = np.pi * N / L
 
+    # Cuts a fraction of high frequencies close to the Nyquist limit
     if dealias:
-        mask = dealiasMask(
-            kx, ky, kz,
-            kNy,
-            fraction=dealiasing_frac
-        )
+        mask = dealiasMask(kx, ky, kz, kNy, fraction=dealiasing_frac)
         delta_k *= mask
 
     inv_k2 = np.zeros_like(k2)
@@ -130,7 +127,6 @@ def secondOrderDensity(delta1_k, N, L, dealias=True, dealiasing_frac=2.0/3.0):
 
     # NumPy FFT normalization
     delta_fft = delta_k / dx**3
-
     delta_x = np.fft.irfftn(delta_fft, s=(N, N, N), axes=(0, 1, 2))
 
     # ---- gradient of delta1
@@ -169,9 +165,9 @@ def secondOrderDensity(delta1_k, N, L, dealias=True, dealiasing_frac=2.0/3.0):
                 s=(N, N, N),
                 axes=(0, 1, 2)
             )
-
             tidal2 += sij**2
 
+    # Final individual physical contributions to the field
     local = (17.0 / 21.0) * delta_x**2
     advection = -np.sum(psi * grad, axis=0)
     tidal = (2.0 / 7.0) * tidal2
@@ -181,7 +177,7 @@ def secondOrderDensity(delta1_k, N, L, dealias=True, dealiasing_frac=2.0/3.0):
 
     delta2_k = dx**3 * np.fft.rfftn(delta2_raw_x, axes=(0, 1, 2))
 
-    # For the 2/3 rule, discard the contaminated output band as well.
+    # Discard the contaminated output band as well.
     if dealias:
         delta2_k *= mask
 
@@ -241,10 +237,7 @@ def shellAverageCrossPower(deltaA_k, deltaB_k, kmag,
     """
     V = L**3
 
-    Pmode = (
-        np.real(deltaA_k * np.conj(deltaB_k))
-        / V
-    )
+    Pmode = np.real(deltaA_k * np.conj(deltaB_k)) / V
 
     wz = np.full(N // 2 + 1, 2.0)
     wz[0] = 1.0
@@ -252,10 +245,7 @@ def shellAverageCrossPower(deltaA_k, deltaB_k, kmag,
     if N % 2 == 0:
         wz[-1] = 1.0
 
-    weights = np.broadcast_to(
-        wz[None, None, :],
-        kmag.shape
-    )
+    weights = np.broadcast_to(wz[None, None, :], kmag.shape)
 
     mask = kmag > 0.0
 
@@ -263,6 +253,7 @@ def shellAverageCrossPower(deltaA_k, deltaB_k, kmag,
     p = Pmode[mask]
     w = weights[mask]
 
+    # Histogram shell grouping
     Nmodes, _ = np.histogram(k, bins=bins, weights=w)
     Psum, _ = np.histogram(k, bins=bins, weights=w * p)
     ksum, _ = np.histogram(k, bins=bins, weights=w * k)
@@ -403,13 +394,7 @@ def runHigherOrderEnsemble(N, L, seeds, D_spt,
 
     _, _, kx, ky, kz, k2, kmag = lpt.fourierGrid(N, L)
 
-    dealias_mask = dealiasMask(
-        kx,
-        ky,
-        kz,
-        kNy,
-        fraction=dealiasing_frac
-    )
+    dealias_mask = dealiasMask(kx, ky, kz, kNy, fraction=dealiasing_frac)
 
     nseed = len(seeds)
     nR = len(R_values)
@@ -462,7 +447,6 @@ def runHigherOrderEnsemble(N, L, seeds, D_spt,
         delta12_k = delta1_k + delta2_k
 
         for iR, R in enumerate(R_values):
-
             (
                 result["var_g"][iseed, iR],
                 result["m3_g"][iseed, iR],
@@ -489,8 +473,8 @@ def runHigherOrderEnsemble(N, L, seeds, D_spt,
                 L
             )
 
+        # Saves space from heavy temporary arrays
         del delta1_k, delta2_k, delta12_k
-
         gc.collect()
 
         if (iseed + 1) % 5 == 0:
@@ -551,21 +535,10 @@ def oneSptDiagnostic(N, L, seed, D, classPower, R_values,
     kNy = np.pi * N / L
     kf = 2.0 * np.pi / L
 
-    dealias_mask = dealiasMask(
-        kx,
-        ky,
-        kz,
-        kNy,
-        fraction=dealiasing_frac
-    )
+    dealias_mask = dealiasMask(kx, ky, kz, kNy, fraction=dealiasing_frac)
 
     # Gaussian reference field
-    delta_ref_k, _ = lpt.gaussianField(
-        N,
-        L,
-        classPower,
-        seed=seed
-    )
+    delta_ref_k, _ = lpt.gaussianField(N, L, classPower, seed=seed)
 
     # Same physical epoch in every test
     delta1_k = D * delta_ref_k * dealias_mask
@@ -573,12 +546,9 @@ def oneSptDiagnostic(N, L, seed, D, classPower, R_values,
 
     # Second-order field
     delta2_k, _ = secondOrderDensity(
-        delta1_k,
-        N,
-        L,
+        delta1_k, N, L,
         dealiasing_frac=dealiasing_frac
     )
-
     delta12_k = delta1_k + delta2_k
 
     # ------------------------------------------------------------
@@ -587,11 +557,7 @@ def oneSptDiagnostic(N, L, seed, D, classPower, R_values,
 
     kmax = kmax_frac * kNy
 
-    bins = np.arange(
-        0.5 * kf,
-        kmax + 1.5 * kf,
-        kf
-    )
+    bins = np.arange(0.5 * kf, kmax + 1.5 * kf, kf)
 
     kbin, P11, Nmodes = lpt.shellAveragePower(delta1_k, kmag, L, N, bins)
     _, P22, _ = lpt.shellAveragePower(delta2_k, kmag, L, N, bins)

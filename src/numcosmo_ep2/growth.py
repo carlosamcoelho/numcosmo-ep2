@@ -39,6 +39,7 @@ def cosmExpansion(a, omega_m0, omega_lambda0):
     omega_k = omega_k0 * a**(-2) / E2
     dlnH_dN = -1.5 * omega_m - omega_k
 
+    # Utility values that will be used later on.
     return E2, omega_m, dlnH_dN
     
 def growthODE(N, y, omega_m0, omega_lambda0):
@@ -74,7 +75,8 @@ def growthODE(N, y, omega_m0, omega_lambda0):
 
     a = np.exp(N)
     E2, omega_m, dlnH_dN = cosmExpansion(a, omega_m0, omega_lambda0)
-    
+
+    # Growth second-order ODE as a system of two first-order ODEs.
     GNN = -(2.0 + dlnH_dN) * GN + 1.5 * omega_m * G
     return [GN, GNN]
 
@@ -134,6 +136,7 @@ def linearGrowth(aEval, omega_m0, omega_lambda0,
     Ni = np.log(ai)
     Nf = 0.0
 
+    # Solves the previously defined system of ODEs.
     sol = solve_ivp(
         growthODE,
         (Ni, Nf),
@@ -147,16 +150,18 @@ def linearGrowth(aEval, omega_m0, omega_lambda0,
     if not sol.success:
         raise RuntimeError(sol.message)
 
-    # Evaluate where requested
+    # Evaluate where requested through the internal interpolating
+    # method .sol from scipy. 
     NEval = np.log(aEval)
     G, GN = sol.sol(NEval)
 
     # Evaluate normalization separately at a=1
     G1 = sol.sol(0.0)[0]
 
-    D = G / G1
-    f = GN / G
+    D = G / G1  # Normalized growth
+    f = GN / G  # Variation rate of growth 
 
+    # Returns the useful quantities that are enough to recover G, GN
     return G1, D, f
 
 def linearGrowthQuad(aEval, omega_m0, omega_lambda0,
@@ -208,14 +213,6 @@ def linearGrowthQuad(aEval, omega_m0, omega_lambda0,
 
     omega_k0 = 1.0 - omega_m0 - omega_lambda0
 
-    def E(a):
-        E2 = (
-            omega_m0 * a**(-3)
-            + omega_k0 * a**(-2)
-            + omega_lambda0
-        )
-        return np.sqrt(E2)
-
     def integrand(a):
         denom = (
             omega_m0
@@ -225,6 +222,9 @@ def linearGrowthQuad(aEval, omega_m0, omega_lambda0,
         return a**1.5 / denom**1.5
 
     def G(a):
+        E = np.sqrt(omega_m0 * a**(-3) + omega_k0 * a**(-2) + omega_lambda0)
+
+        # Independent quadrature method
         I, _ = quad(
             integrand,
             0.0,
@@ -233,7 +233,7 @@ def linearGrowthQuad(aEval, omega_m0, omega_lambda0,
             epsrel=epsrel
         )
 
-        return 2.5 * omega_m0 * E(a) * I
+        return 2.5 * omega_m0 * E * I
 
     G1 = G(1.0)
     G_eval = np.array([G(a) for a in np.ravel(aEval)]).reshape(aEval.shape)
@@ -242,6 +242,10 @@ def linearGrowthQuad(aEval, omega_m0, omega_lambda0,
 
 
 def D_of_a(a, omega_m0, omega_lambda0, ai=1e-5):
+    '''
+    Utility shorthand to recover the D from linearGrowth over a single
+    a value.
+    '''
     _, D, _ = linearGrowth(
         np.array([a]),
         omega_m0,
