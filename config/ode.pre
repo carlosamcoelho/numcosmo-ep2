@@ -1,0 +1,15 @@
+k_step_sub = 0.015
+k_step_super = 0.0001
+k_step_super_reduction = 0.1
+
+l_max_ur = 150
+l_max_ncdm = 50
+
+tol_perturbations_integration = 1.e-5
+perturbations_sampling_stepsize = 0.01
+
+ncdm_fluid_approximation = 3
+ncdm_fluid_trigger_tau_over_tau_k = 51.
+
+tol_ncdm_synchronous = 1.e-10
+tol_ncdm = 1.e-5

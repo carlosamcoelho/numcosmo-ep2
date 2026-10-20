@@ -73,6 +73,7 @@ def defineEvents(form, collapseThreshold):
         raise ValueError("collapseThreshold must be positive.")
 
     # Turnaround: theta = -3
+    # in A theta must be calculated from delta, deltaN
     if form == "A":
         def turnaroundEvent(N, y, *args):
             delta, deltaN = y
@@ -86,7 +87,7 @@ def defineEvents(form, collapseThreshold):
     turnaroundEvent.terminal = False
     turnaroundEvent.direction = -1.0
 
-    # Collapse criterion
+    # Collapse criterion (delta reaches a finite threshold)
     def collapseEvent(N, y, *args):
         return y[0] - collapseThreshold
     collapseEvent.terminal = True
@@ -110,14 +111,9 @@ def collapseLinearODE(N, y, omega_m0, omega_lambda0):
     deltaL, deltaLN = y
 
     a = np.exp(N)
-    E2, omega_m, dlnH_dN = cosmExpansion(
-        a, omega_m0, omega_lambda0
-    )
+    E2, omega_m, dlnH_dN = cosmExpansion(a, omega_m0, omega_lambda0)
 
-    deltaLNN = (
-        -(2.0 + dlnH_dN) * deltaLN
-        + 1.5 * omega_m * deltaL
-    )
+    deltaLNN = -(2.0 + dlnH_dN) * deltaLN + 1.5 * omega_m * deltaL
 
     return [deltaLN, deltaLNN]
 
@@ -284,7 +280,7 @@ def shootCollapseA(ai, ac, omega_m0, omega_lambda0,
         raise ValueError("deltaBracket must satisfy 0 < low < high.")
 
     def objective(delta_i):
-
+        # Solves the A formulation
         sol = solveCollapseA(
             ai=ai,
             af=ac,
@@ -296,21 +292,25 @@ def shootCollapseA(ai, ac, omega_m0, omega_lambda0,
             atol=atol
         )
 
+        # Finds the collapse event
         collapse = findCollapseEvent(sol)
 
-        if collapse is None:
+        if collapse is None: # No collapse happened
             deltaFinal = sol.y[0, -1]
+            # returns a continuous delta-based value
+            # for the function optimizer (so that it
+            # increases to zero when deltaFinal=deltaInf)
             return np.log(deltaFinal / deltaInf)
 
+        # If there was an event, find its a of collapse
         aColl, _ = collapse
+        # returns an aColl-based value for the function
+        # optimizer (such that it decreases from zero when
+        # aColl gets bigger than the desired ac).
         return np.log(ac / aColl)
 
-    delta_i = brentq(
-        objective,
-        deltaLow,
-        deltaHigh,
-        xtol=xtol
-    )
+    # Solves the delta_i optimization
+    delta_i = brentq(objective, deltaLow, deltaHigh, xtol=xtol)
 
     # Final trajectory with the tuned initial overdensity
     sol = solveCollapseA(
@@ -431,6 +431,7 @@ def shootCollapseB(ai, ac, omega_m0, omega_lambda0,
             "deltaBracket must satisfy 0 < low < high."
         )
 
+    # 'objective' follows the same logic from the A formulation
     def objective(delta_i):
         sol = solveCollapseB(
             ai=ai,
@@ -587,6 +588,7 @@ def shootCollapseC(ai, ac, omega_m0, omega_lambda0,
             "deltaBracket must satisfy 0 < low < high."
         )
 
+    # 'objective' follows the same logic from the A formulation
     def objective(delta_i):
         sol = solveCollapseC(
             ai=ai,
@@ -664,11 +666,7 @@ def virialRadiusRatio(lambda_ta):
         return 0.5
 
     def cubic(y):
-        return (
-            4.0 * lambda_ta * y**3
-            - 2.0 * (1.0 + lambda_ta) * y
-            + 1.0
-        )
+        return 4.0 * lambda_ta * y**3 - 2.0 * (1.0 + lambda_ta) * y + 1.0
 
     return brentq(cubic, 0.0, 0.5)
 
@@ -729,29 +727,17 @@ def virialDiagnostic(sol, ac,
     zeta_ta = 1.0 + delta_ta
 
     # rho_Lambda / rho_sphere at turnaround
-    lambda_ta = (
-        omega_lambda0
-        * a_ta**3
-        / (omega_m0 * zeta_ta)
-    )
+    lambda_ta = omega_lambda0 * a_ta**3 / (omega_m0 * zeta_ta)
 
     y_vir = virialRadiusRatio(lambda_ta)
 
-    delta_vir_m = (
-        zeta_ta
-        * (ac / a_ta)**3
-        * y_vir**(-3)
-    )
+    delta_vir_m = zeta_ta * (ac / a_ta)**3 * y_vir**(-3)
 
-    E2_c, omega_m_c, _ = cosmExpansion(
-        ac,
-        omega_m0,
-        omega_lambda0
-    )
+    E2_c, omega_m_c, _ = cosmExpansion(ac, omega_m0, omega_lambda0)
 
     delta_vir_c = omega_m_c * delta_vir_m
 
-    if verbose:
+    if verbose: # Prints the diagnostic values
         print("\na_ta =", a_ta)
         print("theta_ta =", theta_ta)
         print("zeta_ta =", zeta_ta)
@@ -853,21 +839,13 @@ def collapseDiagnostic(ac, omega_m0, omega_lambda0,
     a_coll, _ = collapseEvent
 
     # Linear counterpart evaluated at the target collapse epoch
-    solL = solveCollapseLinear(
-        ai, ac, delta_i,
-        omega_m0, omega_lambda0
-    )
+    solL = solveCollapseLinear(ai, ac, delta_i, 
+                               omega_m0, omega_lambda0)
 
     delta_c = solL.sol(np.log(ac))[0]
 
-    virial = virialDiagnostic(
-        sol,
-        ac,
-        omega_m0,
-        omega_lambda0,
-        form,
-        verbose=False
-    )
+    virial = virialDiagnostic(sol, ac, omega_m0, omega_lambda0,
+                              form, verbose=False)
 
     result = {
         "form": form,
@@ -881,7 +859,6 @@ def collapseDiagnostic(ac, omega_m0, omega_lambda0,
     if verbose:
         for key, value in result.items():
             print(f"{key} = {value}")
-
     return result
     
 
@@ -927,35 +904,18 @@ def EdS_collapse_diagnostic(ac, verbose=True,
 
     errors = {
         "a_coll": diag["collapse_residual"],
-
-        "delta_c": abs(
-            diag["delta_c"] - delta_c_exact
-        ) / delta_c_exact,
-
-        "theta_ta": abs(
-            diag["theta_ta"] + 3.0
-        ) / 3.0,
-
-        "a_ta": abs(
-            diag["a_ta"] - a_ta_exact
-        ) / a_ta_exact,
-
-        "zeta_ta": abs(
-            diag["zeta_ta"] - zeta_ta_exact
-        ) / zeta_ta_exact,
-
-        "Delta_vir_m": abs(
-            diag["Delta_vir_m"] - delta_vir_m_exact
-        ) / delta_vir_m_exact
+        "delta_c": abs(diag["delta_c"] - delta_c_exact) / delta_c_exact,
+        "theta_ta": abs(diag["theta_ta"] + 3.0) / 3.0,
+        "a_ta": abs(diag["a_ta"] - a_ta_exact) / a_ta_exact,
+        "zeta_ta": abs(diag["zeta_ta"] - zeta_ta_exact) / zeta_ta_exact,
+        "Delta_vir_m": abs(diag["Delta_vir_m"] - delta_vir_m_exact) / delta_vir_m_exact
     }
 
     if verbose:
         print(f"--- ac = {ac}, form = {form} ---")
         for key, value in diag.items():
             print(f"{key} = {value}")
-
         print("\nRelative errors:")
         for key, value in errors.items():
             print(f"{key}: {value}")
-
     return errors
